@@ -29,12 +29,8 @@ bt    esSol          succ          n
   | esSol n                           = [n] -- Comprueba si es solucion
   | otherwise                         = concat (map (bt esSol succ) (succ n)) -- Explora recursivamente
 
--- 1. Función que dado un nodo (es decir, un elemento de tipo Futoshiki) nos diga si ya esta completo.
--- Condiciones:
---    - El tablero está completo
-
--- @brief Checks if the current Futoshiki is complete
--- @details
+-- @brief Checks if the current Futoshiki is complete or not
+-- @note  This function does not check correctness
 -- @param[in] Futoshiki
 -- @return    Whether or not the futoshiki is solved
 esSol :: Futoshiki -> Bool -- Condicion de parada
@@ -49,6 +45,11 @@ esSol f =
 
 -- La función succ toma cualquier cosa que tenga definido un sucesor y devuelve ese sucesor.
 -- Debemos de definir una función propia para devolver los sucesores
+
+-- @brief Generates all possible states of the board filling the next empty cell with valid values
+-- @details
+-- @param[in] Futoshiki to complete
+-- @return    Futoshiki with the next cell filled
 succ :: Futoshiki -> [Futoshiki]
 succ f =
   case findEmptyCell f of -- Returns an optional value with the new empty cell
@@ -56,11 +57,11 @@ succ f =
         Just (ri, ci) ->    -- An empty cell is found at coordinates (ri,ci)
           let tryValue v =  -- Create "transform" function for each tried value
                 let newBoard = updateCell f (ri,ci) v   -- Create a new Futoshiki with a new value
-                in if isValid f (ri,ci) v                   -- Check if its valid
-                    then Just newBoard                  -- If valid, create new Futoshiki with new value
-                    else Nothing                            -- Otherwise return nothing
+                in if isValid f (ri,ci) v               -- Check if the assigned value mantains the correctness
+                    then Just newBoard                    -- If valid, create new Futoshiki with new value
+                    else Nothing                          -- Otherwise discard Futoshiki
           in [ board                     -- In case a new Futoshiki has been created
-          | v <- [1 .. size f]                  -- Fill v with all possible values
+          | v <- [1 .. size f]           -- Fill v with all possible values
           , Just board <- [tryValue v]   -- For each value try it
           ]
 
@@ -81,14 +82,22 @@ updateCell f (r,c) val =
       (hRel f)
       (vRel f)
 
+--- @brief  Replaces a value in a list if index is valid
+--- @details
+--- This function takes an index, a value and a list and returns a list where the element at the given index is replaced with the provided value.
+--- It works by recursively transversing the list until it reaches the specified index, replaces the element and reconstructs the list with the updated value.
+--- @param[in]  Index to replace
+--- @param[in]  Value to replace for
+--- @param[in]  Given list
+--- @return     Updated list
 replaceAt :: Int -> a -> [a] -> [a]
-replaceAt _ _ [] = []
-replaceAt 0 val (_:xs) = val : xs
-replaceAt i val (x:xs)
-  | i < 0     = x : xs
-  | otherwise = x : replaceAt (i - 1) val xs
+replaceAt _ _ [] = []                           -- If list is empty return an empty list
+replaceAt 0 val (_:xs) = val : xs               -- If index is 0 then just change first value
+replaceAt i val (x:xs)                          -- Otherwise
+  | i < 0     = x : xs                          -- If index is negative return original list (should not happen)
+  | otherwise = x : replaceAt (i - 1) val xs    -- Recursive case, mantains first element and call recursively updating the elements
 
---- @brief Checks if an updated cell in a Futoshiki meets all the required conditions
+--- @brief Checks if an cell meets all the required conditions with its neighbours
 --- @param[in]  f         Futoshiki
 --- @param[in]  (ri,ci)   Changed cell coordinates
 --- @param[in]  value     New value
@@ -104,8 +113,8 @@ isValid f (ri,ci) value =
 
       newFutoshiki = Futoshiki (size f) newBoard (hRel f) (vRel f)  -- Build new futoshiki with changes
 
-  in isRowValid (newBoard !! ri) &&               -- Check validity for row
-     isRowValid (transpose (newBoard) !! ci) &&   -- Check validity on column
+  in isRowValid (newBoard !! ri) &&               -- Check row values uniqueness
+     isRowValid (transpose (newBoard) !! ci) &&   -- Check column values uniqueness
      checkNeighbourRelations newFutoshiki (ri,ci)
 
 --- @brief Check if a list contains unique numbers (ignoring zeros)
@@ -165,11 +174,11 @@ checkNeighbourRelations f (r,c) =
   in leftCheck && rightCheck && upCheck && downCheck  -- Check that all conditions are met
 
 --- @brief Check if a relation is being respected
---- @details
+--- @note  Ignores relation constraints if either cell is empty
 --- @param[in] Value A
 --- @param[in] Value B
 --- @param[in] Type of relation
---- @return   Whether or not the relation is being respected
+--- @return    Whether or not the relation is being respected
 checkRelation :: Int -> Int -> Relation -> Bool
 checkRelation a b rel
   | a == 0 || b == 0 = True     -- Ignore expression if any component is 0
@@ -178,11 +187,13 @@ checkRelation a b rel
   | rel == Ind = True           -- Check Ind relation
   | otherwise = False           -- Otherwise the relation is not being satisfied
 
+--- @brief Finds the next empty cell coordinates
+--- @param[in]  A Futoshiki
+--- @return     An optional storing the coordinates of the next empty cell
 findEmptyCell :: Futoshiki -> Maybe (Int, Int)
 findEmptyCell f =
-  -- Generates a zipped list of (rowIdx, row) :: [(Int, [Int])]
-  findInRows (zip [0..] (cells f))
-  where -- Declare a "private" function
+  findInRows (zip [0..] (cells f)) -- Generates a zipped list of (rowIdx, row) :: [(Int, [Int])]
+  where -- Declare an inside function
     findInRows :: [(Int, [Int])] -> Maybe (Int, Int)
     findInRows [] = Nothing           -- No empty cells found
     findInRows ((ri,row):rs) =        -- ri is current row index, row is current row, and rs is the remainder
