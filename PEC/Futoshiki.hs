@@ -18,6 +18,12 @@ data Futoshiki = Futoshiki {
 }
   deriving (Eq, Read, Show)
 
+
+------------------------------
+-- Backtracking
+------------------------------
+
+
 -- Función de backtracking genérica --
 -- Explora un árbol de búsqueda completo (DFS) y devuelve todas las soluciones.
 -- Paso 1: Comprueba si es solucion (esSol n)
@@ -29,27 +35,32 @@ bt    esSol          succ          n
   | esSol n                           = [n] -- Comprueba si es solucion
   | otherwise                         = concat (map (bt esSol succ) (succ n)) -- Explora recursivamente
 
--- @brief Checks if the current Futoshiki is complete or not
--- @note  This function does not check correctness
--- @param[in] Futoshiki
--- @return    Whether or not the futoshiki is solved
-esSol :: Futoshiki -> Bool -- Condicion de parada
+
+------------------------------
+-- Solution check
+------------------------------
+
+-- | Checks whether a Futoshiki board is completely filled.
+--
+-- Note: This function does NOT verify correctness of constraints,
+-- only that there are no empty cells.
+esSol :: Futoshiki -> Bool
 esSol f =
     let values = concat (cells f) -- Returns [Int]
-    in all (/= 0) values -- all returns true if all elements are true to the condition
+    in all (/= 0) values          -- all returns true if all elements are true to the condition
 
--- 2. Una función que dado un nodo nos devuelva su lista de nodos hijos.
--- Paso 1: Buscar una celda vacía
--- Paso 2: Probar valores
--- Paso 3: Generar nuevos Futoshikis
+------------------------------
+-- Successor generation (with pruning)
+------------------------------
 
--- La función succ toma cualquier cosa que tenga definido un sucesor y devuelve ese sucesor.
--- Debemos de definir una función propia para devolver los sucesores
-
--- @brief Generates all possible states of the board filling the next empty cell with valid values
--- @details
--- @param[in] Futoshiki to complete
--- @return    Futoshiki with the next cell filled
+-- | Generates all possible states of the board filling the next empty cell with valid values
+--
+-- For the next empty position:
+-- - Tries all possible values from 1 to size
+-- - Filters out invalid states using 'isValid'
+--
+-- Early pruning and validation is produced here
+-- Returns an updated and **valid** state of the Futoshiki
 succ :: Futoshiki -> [Futoshiki]
 succ f =
   case findEmptyCell f of -- Returns an optional value with the new empty cell
@@ -57,39 +68,51 @@ succ f =
         Just (ri, ci) ->    -- An empty cell is found at coordinates (ri,ci)
           let tryValue v =  -- Create "transform" function for each tried value
                 let newBoard = updateCell f (ri,ci) v   -- Create a new Futoshiki with a new value
-                in if isValid f (ri,ci) v               -- Check if the assigned value mantains the correctness
+                in if isValid newBoard (ri,ci)            -- Check if the assigned value mantains the correctness
                     then Just newBoard                    -- If valid, create new Futoshiki with new value
-                    else Nothing                          -- Otherwise discard Futoshiki
+                    else Nothing                          -- Otherwise discard Futoshiki (Early pruning)
           in [ board                     -- In case a new Futoshiki has been created
           | v <- [1 .. size f]           -- Fill v with all possible values
           , Just board <- [tryValue v]   -- For each value try it
           ]
 
+-- | Finds the next empty cell coordinates
+--
+-- Returns its coordinates (row, column), or Nothing if full.
+findEmptyCell :: Futoshiki -> Maybe (Int, Int)
+findEmptyCell f =
+  findInRows (zip [0..] (cells f)) -- Generates a zipped list of (rowIdx, row) :: [(Int, [Int])]
+  where -- Declare an inside function
+    findInRows :: [(Int, [Int])] -> Maybe (Int, Int)
+    findInRows [] = Nothing           -- No empty cells found
+    findInRows ((ri,row):rs) =        -- ri is current row index, row is current row, and rs is the remainder
+      case findIndex (==0) row of   -- If it finds a cell with a 0 then look for the column index
+        Nothing -> findInRows rs  -- No 0 in this row, call function recursively
+        Just ci -> Just (ri, ci)  -- 0 found, return coordinates
 
---- @brief Updates a specified cell in a Futhoshiki with a given value
---- @param[in]  f     Futoshiki
---- @param[in]  (r,c) Coordinates of the cell to be updated
---- @return Updated Futhoshiki
+------------------------------
+-- Board manipulation
+------------------------------
+
+-- | Updates a specific cell in the board with a new value.
+--
+-- Returns a new Futoshiki instance with the updated cell.
 updateCell :: Futoshiki -> (Int, Int) -> Int -> Futoshiki
 updateCell f (r,c) val =
   let board = cells f
       row = board !! r                    -- Retrieve the complete row
       newRow = replaceAt c val row        -- Create a new row with the value in column (index) c changed to given valur
       newBoard = replaceAt r newRow board -- Replace the original row with the updated row
-  in Futoshiki                          -- Return new Futoshiki, size and relations stay unchanged and can be retrieved directly from the original Futoshiki
+  in Futoshiki                            -- Return new Futoshiki, size and relations stay unchanged and can be retrieved directly from the original Futoshiki
       (size f)
       newBoard
       (hRel f)
       (vRel f)
 
---- @brief  Replaces a value in a list if index is valid
---- @details
---- This function takes an index, a value and a list and returns a list where the element at the given index is replaced with the provided value.
---- It works by recursively transversing the list until it reaches the specified index, replaces the element and reconstructs the list with the updated value.
---- @param[in]  Index to replace
---- @param[in]  Value to replace for
---- @param[in]  Given list
---- @return     Updated list
+-- | Replaces the element at a given index in a list.
+--
+-- This function takes an index, a value and a list and returns a list where the element at the given index is replaced with the provided value.
+-- It works by recursively transversing the list until it reaches the specified index, replaces the element and reconstructs the list with the updated value.
 replaceAt :: Int -> a -> [a] -> [a]
 replaceAt _ _ [] = []                           -- If list is empty return an empty list
 replaceAt 0 val (_:xs) = val : xs               -- If index is 0 then just change first value
@@ -97,30 +120,25 @@ replaceAt i val (x:xs)                          -- Otherwise
   | i < 0     = x : xs                          -- If index is negative return original list (should not happen)
   | otherwise = x : replaceAt (i - 1) val xs    -- Recursive case, mantains first element and call recursively updating the elements
 
---- @brief Checks if an cell meets all the required conditions with its neighbours
---- @param[in]  f         Futoshiki
---- @param[in]  (ri,ci)   Changed cell coordinates
---- @param[in]  value     New value
---- @return Whether or not the futoshiki meets the required conditions
-isValid :: Futoshiki -> (Int, Int) -> Int -> Bool
-isValid f (ri,ci) value =
-  let board = cells f             -- Define result futoshiki from original
+------------------------------
+-- Validation
+------------------------------
 
-      row = board !! ri             -- Get [Int] from row at ri
-      newRow = replaceAt ci value row   -- Create new row [Int] with new value to check
+-- | Checks if an cell meets all the required conditions with its neighbours
+-- Validity conditions:
+-- - No duplicates in the row
+-- - No duplicates in the column
+-- - All neighbour relations are satisfied
+isValid :: Futoshiki -> (Int, Int) -> Bool
+isValid f (ri,ci) =
+  let board = cells f                             -- Defines a board made of the cells from the Futoshiki
+      rowOk = isRowValid (board !! ri)            -- Checks if row ri is valid
+      colOk = isRowValid (transpose board !! ci)  -- Checks if column ci is valid
+  in rowOk &&
+     colOk &&
+     checkNeighbourRelations f (ri,ci)  -- Checks if neighbour relations are being respected
 
-      newBoard = replaceAt ri newRow board  -- Simulate new board with new value
-
-      newFutoshiki = Futoshiki (size f) newBoard (hRel f) (vRel f)  -- Build new futoshiki with changes
-
-  in isRowValid (newBoard !! ri) &&               -- Check row values uniqueness
-     isRowValid (transpose (newBoard) !! ci) &&   -- Check column values uniqueness
-     checkNeighbourRelations newFutoshiki (ri,ci)
-
---- @brief Check if a list contains unique numbers (ignoring zeros)
---- @details
---- @param[in] A list of integers
---- @return   Whether or not the list does not contain duplicates
+-- | Check if a list contains unique numbers (ignoring zeros)
 isRowValid :: [Int] -> Bool
 isRowValid row = -- row = [Int]
     let filtered_row = filter (/= 0) row -- Remove all elements that are 0 from the list
@@ -128,13 +146,13 @@ isRowValid row = -- row = [Int]
     -- compares the lengths of the original row with the one without duplicates
     in length filtered_row == length (nub filtered_row)
 
--- @brief Perform relation checks for all adjacent neighbours
--- @param[in] f     Futoshiki
--- @param[in] (r,c) Current cell that is being checked for (!= 0)
--- @return Whether all local neighbour relations for the given cell are satisfied
+-- | Checks all neighbour relations for a given cell.
+--
+-- Ensures that horizontal and vertical constraints are satisfied with adjacent cells
 checkNeighbourRelations :: Futoshiki -> (Int, Int) -> Bool
 checkNeighbourRelations f (r,c) =
   let
+    -- Prepare variables
     board = cells f                         -- Board is retrieved from the cells from the futoshiki
     n = size f                              -- Size of the futoshiki
     val = board !! r !! c                   -- Current value
@@ -173,12 +191,8 @@ checkNeighbourRelations f (r,c) =
 
   in leftCheck && rightCheck && upCheck && downCheck  -- Check that all conditions are met
 
---- @brief Check if a relation is being respected
---- @note  Ignores relation constraints if either cell is empty
---- @param[in] Value A
---- @param[in] Value B
---- @param[in] Type of relation
---- @return    Whether or not the relation is being respected
+-- | Check if a relation is being respected
+-- If either value is 0 (empty), the relation is ignored
 checkRelation :: Int -> Int -> Relation -> Bool
 checkRelation a b rel
   | a == 0 || b == 0 = True     -- Ignore expression if any component is 0
@@ -187,20 +201,14 @@ checkRelation a b rel
   | rel == Ind = True           -- Check Ind relation
   | otherwise = False           -- Otherwise the relation is not being satisfied
 
---- @brief Finds the next empty cell coordinates
---- @param[in]  A Futoshiki
---- @return     An optional storing the coordinates of the next empty cell
-findEmptyCell :: Futoshiki -> Maybe (Int, Int)
-findEmptyCell f =
-  findInRows (zip [0..] (cells f)) -- Generates a zipped list of (rowIdx, row) :: [(Int, [Int])]
-  where -- Declare an inside function
-    findInRows :: [(Int, [Int])] -> Maybe (Int, Int)
-    findInRows [] = Nothing           -- No empty cells found
-    findInRows ((ri,row):rs) =        -- ri is current row index, row is current row, and rs is the remainder
-      case findIndex (==0) row of   -- If it finds a cell with a 0 then look for the column index
-        Nothing -> findInRows rs  -- No 0 in this row, call function recursively
-        Just ci -> Just (ri, ci)  -- 0 found, return coordinates
-
--- Main function: solves a Futoshiki --
+-- | Main function: solves a Futoshiki
+--
+-- Takes a Futoshiki puzzle and returns all its solutions as matrices of integers
 solve :: Futoshiki -> [Matrix Int]
+-- map cells: after bt returns all solutions as [Futoshiki] maps transforms them into [Matrix Int]
+-- (bt esSol Futoshiki.succ f):
+--    1. Starts from puzzle `f`
+--    2. Generates next states
+--    3. Explore until esSol == true
+--    4. Returns all solution states
 solve f = map cells (bt esSol Futoshiki.succ f)
