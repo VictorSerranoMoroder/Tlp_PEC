@@ -1,6 +1,22 @@
-module Futoshiki where
+{-
+Futoshiki v2.0
+Copyright (C) 2026 Víctor Serrano Moroder
 
-import Data.List (nub, transpose, findIndex)
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-}
+
+module Futoshiki where
 
 -- Bidimensional Matrix --
 type Matrix a = [[a]]
@@ -22,7 +38,6 @@ data Futoshiki = Futoshiki {
 ------------------------------
 -- Backtracking
 ------------------------------
-
 
 -- Función de backtracking genérica --
 -- Explora un árbol de búsqueda completo (DFS) y devuelve todas las soluciones.
@@ -90,6 +105,17 @@ findEmptyCell f =
         Nothing -> findInRows rs  -- No 0 in this row, call function recursively
         Just ci -> Just (ri, ci)  -- 0 found, return coordinates
 
+-- | Looks for an index that contains a given value
+--
+-- Returns an optional with wether or not it has found the given value
+findIndex :: (a -> Bool) -> [a] -> Maybe Int
+findIndex p = go 0
+  where
+    go _ [] = Nothing
+    go i (x:xs)
+      | p x       = Just i
+      | otherwise = go (i + 1) xs
+
 ------------------------------
 -- Board manipulation
 ------------------------------
@@ -133,18 +159,31 @@ isValid :: Futoshiki -> (Int, Int) -> Bool
 isValid f (ri,ci) =
   let board = cells f                             -- Defines a board made of the cells from the Futoshiki
       rowOk = isRowValid (board !! ri)            -- Checks if row ri is valid
-      colOk = isRowValid (transpose board !! ci)  -- Checks if column ci is valid
+      colOk = isRowValid (getCol board ci)        -- Checks if column ci is valid
   in rowOk &&
      colOk &&
      checkNeighbourRelations f (ri,ci)  -- Checks if neighbour relations are being respected
+
+-- | Retrieve the column as an array
+--
+-- Returns a given column in form of a list from a matrix
+getCol :: Matrix a -> Int -> [a]
+getCol board ci = map (!! ci) board
 
 -- | Check if a list contains unique numbers (ignoring zeros)
 isRowValid :: [Int] -> Bool
 isRowValid row = -- row = [Int]
     let filtered_row = filter (/= 0) row -- Remove all elements that are 0 from the list
-    -- nub removes duplicates
-    -- compares the lengths of the original row with the one without duplicates
-    in length filtered_row == length (nub filtered_row)
+    in not (hasDuplicates filtered_row)
+
+-- | Checks if a given list contains duplicates
+--
+-- Returns whether or not a list contains duplicates
+hasDuplicates :: Eq a => [a] -> Bool
+hasDuplicates [] = False
+hasDuplicates (x:xs)
+  | x `elem` xs = True
+  | otherwise   = hasDuplicates xs
 
 -- | Checks all neighbour relations for a given cell.
 --
